@@ -1,0 +1,39 @@
+name: "clang-format"
+on:
+  push:
+    paths:
+      - "mcu/**.c"
+      - "mcu/**.h"
+      - "mcu/.clang-format"
+      - ".github/workflows/lint-c.yml"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - "mcu/**.c"
+      - "mcu/**.h"
+      - "mcu/.clang-format"
+      - ".github/workflows/lint-c.yml"
+
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: "Log level"
+        required: true
+        default: "warning"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: "0"
+
+      - name: Check code style
+        uses: jidicula/clang-format-action@v4.11.0
+        with:
+          clang-format-version: "18"
+          check-path: "./mcu/sys"
+          fallback-style: Microsoft

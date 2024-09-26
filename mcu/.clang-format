@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+# Copyright (c) XiangYang, all rights reserved.
+Language: Cpp
+BasedOnStyle: Microsoft
+ColumnLimit: 80
+IndentWidth: 4
+AccessModifierOffset: -4
+BreakBeforeBraces: Custom
+BraceWrapping:
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+  AfterCaseLabel: true
+  BeforeElse: true
+  AfterControlStatement: Never
+  IndentBraces: false
+PointerAlignment: Left
+DerivePointerAlignment: false
+# clang-format version >= 14.0
+AlignAfterOpenBracket: BlockIndent
+AllowShortCaseLabelsOnASingleLine: false
+BinPackArguments: false
+BinPackParameters: false
+# keep cmsis_xxx at the bottom,
+# because the header provided by ARM always forgets to include the necessay one
+IncludeCategories:
+  - Regex: "<[[:alnum:].]+>"
+    Priority: 1
+  - Regex: '^"(grlib|fonts).*'
+    Priority: 3
+  - Regex: "stm32.*"
+    Priority: 4
+  - Regex: "Core.*"
+    Priority: 5
+  - Regex: "cmsis.*"
+    Priority: 6
+  - Regex: '^".*'
+    Priority: 2
+MaxEmptyLinesToKeep: 1
+IndentWrappedFunctionNames: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AlignEscapedNewlines: Left
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+BreakBeforeTernaryOperators: false
+AlwaysBreakTemplateDeclarations: Yes
+AttributeMacros:
+  - __attribute__
+# LLVM16
+BreakAfterAttributes: Always

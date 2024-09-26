@@ -1,0 +1,29 @@
+name: "zig fmt & lint"
+
+on:
+  push:
+    paths:
+      - "mcu/**.zig"
+      - ".github/workflows/lint-zig.yml"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - "mcu/**.zig"
+      - ".github/workflows/lint-zig.yml"
+
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: "Log level"
+        required: true
+        default: "warning"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: "0"

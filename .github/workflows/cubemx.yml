@@ -1,0 +1,153 @@
+name: "CubeMX"
+
+on:
+  push:
+    paths:
+      - "**.ioc"
+      - ".github/workflows/cubemx.yml"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.ioc"
+      - ".github/workflows/cubemx.yml"
+
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: "Log level"
+        required: true
+        default: "warning"
+
+  workflow_call:
+
+env:
+  cubemx_out: mcu
+  cubemx_ver: "6_11_1"
+  cubemx_file: mcu/cubemx.ioc
+
+jobs:
+  generate:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: "0"
+
+      - name: Restore CubeMX output to '${{ env.cubemx_out }}'
+        id: cubemx-output
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.cubemx_out }}/cubemx-output.zip
+          key: cubemx-output-${{ hashFiles('mcu/cubemx.ioc') }}
+
+      - name: Unpack CubeMX output
+        if: steps.cubemx-output.outputs.cache-hit == 'true'
+        run: >
+          Expand-Archive
+          -Path ${{ env.cubemx_out }}/cubemx-output.zip
+          -DestinationPath ${{ env.cubemx_out }}
+
+      - name: Download CubeMX ${{ env.cubemx_ver }}
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        run: |
+          $file = "STM32CubeMX_ver${{ env.cubemx_ver }}.zip"
+
+          $api_args = @{
+            Uri     = 'https://api.github.com/repos/${{ secrets.CUBEMX_MIRROR }}/contents'
+            OutFile = 'content_manifest.json'
+            Method  = 'GET'
+            Headers = @{
+              Authorization = 'token ${{ secrets.REPO_ACCESS_TOKEN }}'
+            }
+          }
+          Invoke-WebRequest @api_args
+
+          $json_dat = Get-Content 'content_manifest.json' | ConvertFrom-Json
+          foreach ($json_item in $json_dat) {
+            if ($file -eq $json_item.name ) {
+              $media_requrl = $json_item.url
+              $request_args = @{
+                Uri     = "$media_requrl"
+                OutFile = "$file.json"
+                Method  = 'GET'
+                Headers = @{
+                  Authorization = 'token ${{ secrets.REPO_ACCESS_TOKEN }}'
+                }
+              }
+              Invoke-WebRequest @request_args
+            }
+          }
+
+          $fetch_dat = Get-Content "$file.json" | ConvertFrom-Json
+          Invoke-WebRequest -OutFile $file -Uri $fetch_dat.download_url
+
+      - name: Clone STM32CubeL0 Package
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        run: |
+          mkdir ~/STM32Cube
+          mkdir ~/STM32Cube/Repository
+          cd ~/STM32Cube/Repository
+          git clone --depth=1 --branch v1.12.2 --recursive https://github.com/STMicroelectronics/STM32CubeL0.git STM32Cube_FW_L0_V1.12.2
+
+      - name: Unzip CubeMX ${{ env.cubemx_ver }}
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        run: |
+          unzip STM32CubeMX_ver${{ env.cubemx_ver }}.zip
+
+      - name: Generate CubeMX Script
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        working-directory: STM32CubeMX
+        run: |
+          $iocfile = Resolve-Path '../${{ env.cubemx_file }}'
+          if ((Test-Path $iocfile) -eq "True") {
+            $script = "waitclock 30`nconfig load $iocfile`nproject generate`nexit`n"
+          }
+          else {
+            $script = "exit`n"
+          }
+
+          $dummy_script = "waitclock 30`nswmgr refresh`nhelp`nexit`n"
+
+          Out-File -FilePath script.txt -InputObject $script -Encoding ASCII
+
+          Out-File -FilePath dummy.txt -InputObject $dummy_script -Encoding ASCII
+
+      - name: Run CubeMX (dummy)
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        working-directory: STM32CubeMX
+        run: |
+          ./jre/bin/java -jar STM32CubeMX.exe -q dummy.txt
+
+      - name: Run CubeMX
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        working-directory: STM32CubeMX
+        run: |
+          ./jre/bin/java -jar STM32CubeMX.exe -q script.txt
+
+      - name: Save time-stamp
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        working-directory: ${{ env.cubemx_out }}
+        run: |
+          Get-Date | Out-File -FilePath generate-date.txt
+
+      - name: Pack CubeMX output
+        if: steps.cubemx-output.outputs.cache-hit != 'true'
+        working-directory: ${{ env.cubemx_out }}
+        run: |
+          $compress = @{
+            Path = 'Core', 'Drivers', 'cubemx', '*.txt'
+            CompressionLevel = 'Fastest'
+            DestinationPath = 'cubemx-output.zip'
+          }
+
+          Compress-Archive @compress
+
+      - name: Upload CubeMX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubemx-output
+          path: |
+            ${{ env.cubemx_out }}/cubemx-output.zip

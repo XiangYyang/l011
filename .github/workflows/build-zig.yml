@@ -1,0 +1,96 @@
+name: "zig build"
+
+on:
+  push:
+    paths:
+      - "mcu/**.c"
+      - "mcu/**.h"
+      - "mcu/**.s"
+      - "mcu/**.ld"
+      - "mcu/**.zig"
+      - ".github/workflows/build-zig.yml"
+
+  pull_request:
+    branches: [main]
+    paths:
+      - "mcu/**.c"
+      - "mcu/**.h"
+      - "mcu/**.s"
+      - "mcu/**.ld"
+      - "mcu/**.zig"
+      - ".github/workflows/build-zig.yml"
+
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: "Log level"
+        required: true
+        default: "warning"
+
+  workflow_call:
+
+jobs:
+  cubemx:
+    secrets: inherit
+    uses: ./.github/workflows/cubemx.yml
+
+  build:
+    runs-on: ubuntu-latest
+    name: build-${{ matrix.release }}
+    needs:
+      - cubemx
+    strategy:
+      fail-fast: true
+      matrix:
+        release:
+          - ReleaseFast
+          - ReleaseSmall
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: "0"
+
+      - name: Install zig 0.13.0
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "16.0"
+
+      - name: Download `cubemx-output.zip` from `cubemx.yml`
+        uses: actions/download-artifact@v4
+        with:
+          name: cubemx-output
+
+      - name: Unzip CubeMX Output
+        working-directory: mcu
+        run: |
+          unzip -d. ../cubemx-output.zip
+
+      - name: Build firmware
+        working-directory: mcu
+        run: >
+          zig build -Doptimize=${{ matrix.release }}
+
+      - name: Run llvm-size
+        working-directory: mcu/zig-out
+        run: |
+          echo "Build Date   : $(date)"               >> summary.txt
+          echo "Git Commit   : $(git rev-parse HEAD)" >> summary.txt
+          echo "Zig version  : $(zig version)"        >> summary.txt
+          echo -e "\n== obj-size firmware.elf ==\n"   >> summary.txt
+          echo "$(llvm-size bin/firmware.elf)"        >> summary.txt
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.release }}
+          path: |
+            mcu/zig-out/*.s
+            mcu/zig-out/*.txt
+            mcu/zig-out/bin/*.*
