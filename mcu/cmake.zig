@@ -143,19 +143,19 @@ pub const CMake = struct {
 
     alloc: std.mem.Allocator,
     b: *std.Build,
-    elf: *std.Build.Step.Compile,
+    mod: *std.Build.Module,
     compdb: CompdbRecord,
 
     /// create a compdb struct
     pub fn init(
         alloc: std.mem.Allocator,
         b: *std.Build,
-        elf: *std.Build.Step.Compile,
+        mod: *std.Build.Module,
     ) Self {
         return .{
             .alloc = alloc,
             .b = b,
-            .elf = elf,
+            .mod = mod,
             .compdb = CompdbRecord.init(alloc),
         };
     }
@@ -187,12 +187,15 @@ pub const CMake = struct {
 
     /// generate compdb
     pub fn generate_compdb(self: Self, base_dir: []const u8, leak_cmd: []const u8, leak_args: []const []const u8) !void {
-        return self.compdb.generate("compile_commands.json", base_dir, leak_cmd, leak_args);
+        const file = "compile_commands.json";
+        const result = self.compdb.generate(file, base_dir, leak_cmd, leak_args);
+
+        return result;
     }
 
     /// add the C including path to `elf`
     fn add_c_includes(self: *Self, base_dir: []const u8, c_include: []const u8) !void {
-        const inc_path = try path_norm_join(self.alloc, &.{ base_dir, c_include });
+        const inc_path = try std.fs.path.resolve(self.alloc, &.{ base_dir, c_include });
         defer self.alloc.free(inc_path);
 
         // add it to the compdb records
@@ -205,15 +208,28 @@ pub const CMake = struct {
         try self.compdb.include_cmd.append(try self.alloc.dupe(u8, command.items));
 
         // add the including path
-        self.elf.addIncludePath(self.b.path(inc_path));
+        self.mod.addIncludePath(self.b.path(inc_path));
     }
 
     /// add the C source files to `elf`
     fn add_c_sources(self: *Self, c_flags: []const []const u8, base_dir: []const u8, c_source_filters: []const u8) !void {
-        const src_path = try path_norm_join(self.alloc, &.{ base_dir, c_source_filters });
+        const src_path = try std.fs.path.resolve(self.alloc, &.{ base_dir, c_source_filters });
         defer self.alloc.free(src_path);
 
-        var iter_dir = try std.fs.cwd().openDir(src_path, .{ .iterate = true });
+        // try open directory
+        const it = std.fs.cwd().openDir(src_path, .{ .iterate = true });
+
+        // ignore not_found error, and return other errors
+        var iter_dir = if (it) |val| val else |err| switch (err) {
+            std.fs.Dir.OpenError.FileNotFound => {
+                // ignore not_found error
+                return;
+            },
+            else => |leftover_err| {
+                return leftover_err;
+            },
+        };
+
         defer iter_dir.close();
 
         var walker = try iter_dir.walk(self.alloc);
@@ -228,7 +244,7 @@ pub const CMake = struct {
                 continue;
             }
 
-            const file_path = try path_norm_join(self.alloc, &.{ src_path, entry.path });
+            const file_path = try std.fs.path.resolve(self.alloc, &.{ src_path, entry.path });
             defer self.alloc.free(file_path);
 
             // Add it to thecompdb records
@@ -236,45 +252,13 @@ pub const CMake = struct {
             try self.compdb.source.append(try self.alloc.dupe(u8, file_path));
 
             // add sources
-            self.elf.addCSourceFile(.{
+            self.mod.addCSourceFile(.{
                 .file = self.b.path(file_path),
                 .flags = c_flags,
             });
         }
     }
 };
-
-/// join the path with normalizing, free the return value outside
-fn path_norm_join(alloc: std.mem.Allocator, paths: []const []const u8) ![]u8 {
-    const path = try std.fs.path.join(alloc, paths);
-    return normalize_path_in(path);
-}
-
-/// normalize path, free the return value outside
-///
-///  * on unix, `src\path/file` → `src/path/file`
-///  * on windows, `src\path/file` → `src\path\file`
-fn normalize_path(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
-    const path_mem = try alloc.dupe(u8, path);
-    return normalize_path_in(path_mem);
-}
-
-/// normalize path and return the modified self
-///
-///  * on unix, `src\path/file` → `src/path/file`
-///  * on windows, `src\path/file` → `src\path\file`
-fn normalize_path_in(path: []u8) []u8 {
-    for (0..path.len) |i| {
-        if (path[i] == '/' and path[i] != std.fs.path.sep) {
-            // windows case
-            path[i] = '\\';
-        } else if (path[i] == '\\' and path[i] != std.fs.path.sep) {
-            // unix case
-            path[i] = '/';
-        }
-    }
-    return path;
-}
 
 /// join the command, release the return value outside
 fn join_command(alloc: std.mem.Allocator, cmd_args: []const []const u8) ![]u8 {

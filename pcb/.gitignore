@@ -1,0 +1,10 @@
+*
+!figures/
+
+!*.rst
+!*.kicad_sch
+!*.kicad_pcb
+!*.kicad_pro
+!*.kicad_dru
+!.gitignore
+!config.kibot.yml

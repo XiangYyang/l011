@@ -75,7 +75,7 @@ jobs:
       - name: Build firmware
         working-directory: mcu
         run: >
-          zig build -Doptimize=${{ matrix.release }}
+          zig build --summary all -Doptimize=${{ matrix.release }}
 
       - name: Run llvm-size
         working-directory: mcu/zig-out

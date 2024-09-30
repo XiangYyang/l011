@@ -28,15 +28,6 @@
 // stack size
 .word _Min_Stack_Size
 
-// magic number for checking overflow
-// BITS    VALUE       DESCRIPTION
-// ------  ----------  --------------
-// [31:0]  0x696d6eca  'Canmi'
-.section    .rodata.magic_number
-.type       empty_str, %object
-magic_number:
-    .word   0x696d6eca
-
 // reset handler (boot)
 .section .text.Reset_Handler
 .weak Reset_Handler
@@ -46,8 +37,12 @@ Reset_Handler:
     // set stack pointer
     mov     sp, r0
 
-    // load the magic number to `r5`
-    ldr     r5, =magic_number
+    // load the magic number to `r5`  
+    // magic number for checking overflow
+    // BITS    VALUE       DESCRIPTION
+    // ------  ----------  --------------
+    // [31:0]  0x696d6eca  'Canmi'
+    ldr     r1, =0x696d6eca
 
     // fill magic number to the stack bottom
     ldr     r2, =_Min_Stack_Size
@@ -58,21 +53,21 @@ Reset_Handler:
     bl      SystemInit
 
     // Check if boot space corresponds to system memory
-    ldr     r0, =0x00000004
+    movs    r0, #0x4
     ldr     r1, [r0]
     lsrs    r1, r1, #24
-    ldr     r2,=0x1f
+    movs    r2, #0x1f
     cmp     r1, r2
     bne     startup
 
     // SYSCFG clock enable
     ldr     r0, =0x40021034
-    ldr     r1, =0x00000001
+    movs    r1, #0x01
     str     r1, [r0]
 
     // Set CFGR1 register with flash memory remap at address 0
     ldr     r0, =0x40010000
-    ldr     r1, =0x00000000
+    movs    r1, #0x00
     str     r1, [r0]
 
 startup:
